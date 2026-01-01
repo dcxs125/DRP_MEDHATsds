@@ -1,0 +1,163 @@
+name: Fast Code Base64 - Win 11  cc
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deployment:
+    runs-on: windows-latest
+    # ====================================================
+    # الحد الأقصى المطلق للسيرفر (يجب أن يتطابق مع المتغير بالأسفل)
+    # ====================================================
+    timeout-minutes: 360
+
+    env:
+      # $$$ إعدادات الوقت $$$
+      # ضع هنا الوقت الكلي، وسيقوم الكود بطرح 10 دقائق منه تلقائياً
+      JOB_MAX_TIME: 360
+      
+      # إعدادات المستخدم
+      aa2: "XCDOOD"
+      aa3: "Zxxz4444"
+      KEY_CHOICE: "1"
+      APP_BUNDLE_URL: "https://tinyurl.com/appk5214s"
+      ZIP_URL: "https://tinyurl.com/filesdownlaodkkda45"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ---------------------------------------------------
+      # 1. إعداد RDP
+      # ---------------------------------------------------
+      - name: Setup RDP & Users
+        shell: pwsh
+        run: |
+          Write-Host "==== 1/3 SETUP RDP ===="
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -value 1
+          $u = $env:aa2; $p = $env:aa3
+          net user $u $p /add; net localgroup administrators $u /add
+          Write-Host "User Created."
+
+      # ---------------------------------------------------
+      # 2. التحميل والتثبيت (تم اختصار الكود للتركيز على طلبك)
+      # ---------------------------------------------------
+      - name: Download & Install Apps
+        shell: pwsh
+        run: |
+          Write-Host "==== 2/3 DOWNLOAD & INSTALL ===="
+          # دالة فك الروابط المختصرة
+          function Get-FinalUrl { param ($u) try { $r=[System.Net.WebRequest]::Create($u); $r.Method="HEAD"; $r.AllowAutoRedirect=$true; $r.GetResponse().ResponseUri.AbsoluteUri } catch { $u } }
+          
+          $ZipPath = "C:\Users\Public\app_bundle.zip"
+          $ExtractDir = "C:\Users\Public\Apps"
+          
+          # تحميل وفك الضغط
+          Invoke-WebRequest -Uri (Get-FinalUrl $env:APP_BUNDLE_URL) -OutFile $ZipPath
+          Expand-Archive -Path $ZipPath -DestinationPath $ExtractDir -Force
+          
+          # تثبيت NST
+          $Nst = Get-ChildItem -Path $ExtractDir -Filter "*nst*.exe" -Recurse | Select-Object -First 1
+          if ($Nst) { Start-Process -FilePath $Nst.FullName -ArgumentList "/VERYSILENT","/NORESTART" -Wait }
+
+      # ---------------------------------------------------
+      # 3. المنطق الذكي (الحساب التلقائي + أزرار التحكم)
+      # ---------------------------------------------------
+      - name: Smart Session Manager
+        shell: pwsh
+        run: |
+          # ==========================================
+          # أ) الحساب التلقائي للوقت
+          # ==========================================
+          [int]$MaxTime = $env:JOB_MAX_TIME
+          [int]$Buffer = 10
+          [int]$AutoCloseTime = $MaxTime - $Buffer
+          
+          Write-Host "========================================"
+          Write-Host " SERVER TIME LOGIC:"
+          Write-Host " Max Server Time: $MaxTime Minutes"
+          Write-Host " Buffer Safety:   $Buffer Minutes"
+          Write-Host " AUTO CLOSE AT:   $AutoCloseTime Minutes"
+          Write-Host "========================================"
+
+          # ==========================================
+          # ب) إنشاء أزرار التحكم (Close & Cancel)
+          # ==========================================
+          $Desktop = "C:\Users\Public\Desktop"
+          
+          # 1. زر إغلاق الجلسة (CloseSession.bat)
+          $CloseContent = @"
+          @echo off
+          color 0C
+          title Close Session Request
+          echo.
+          echo    WARNING: YOU REQUESTED TO CLOSE THE SESSION.
+          echo.
+          echo    Creating Stop Signal...
+          echo    CLOSING IN 1 MINUTE... (Run CancelShutdown to stop)
+          echo.
+          echo SHUTDOWN_REQUEST > "C:\Users\Public\STOP_SIGNAL.txt"
+          pause
+          "@
+          Set-Content -Path "$Desktop\CloseSession.bat" -Value $CloseContent
+
+          # 2. زر إلغاء الإغلاق (CancelShutdown.bat)
+          $CancelContent = @"
+          @echo off
+          color 0A
+          title Cancel Shutdown
+          echo.
+          echo    CANCELLING SHUTDOWN REQUEST...
+          echo.
+          if exist "C:\Users\Public\STOP_SIGNAL.txt" (
+              del "C:\Users\Public\STOP_SIGNAL.txt"
+              echo    [SUCCESS] Shutdown Cancelled. You are safe.
+          ) else (
+              echo    [INFO] No shutdown was pending.
+          )
+          echo.
+          pause
+          "@
+          Set-Content -Path "$Desktop\CancelShutdown.bat" -Value $CancelContent
+
+          # ==========================================
+          # ج) حلقة المراقبة الذكية
+          # ==========================================
+          $sw = [Diagnostics.Stopwatch]::StartNew()
+          
+          while ($true) {
+              $Elapsed = $sw.Elapsed.TotalMinutes
+              $Remaining = [math]::Round($AutoCloseTime - $Elapsed)
+
+              # 1. فحص الوقت الإجباري (الشرط الصارم)
+              if ($Elapsed -ge $AutoCloseTime) {
+                  Write-Warning ">>> TIME LIMIT REACHED ($AutoCloseTime mins). Force Closing <<<"
+                  # هذا يغلق الجلسة فوراً حتى لو ضغطت إلغاء، لأن الوقت الأصلي انتهى
+                  break
+              }
+
+              # 2. فحص طلب الإغلاق اليدوي (CloseSession)
+              if (Test-Path "C:\Users\Public\STOP_SIGNAL.txt") {
+                  Write-Warning ">>> MANUAL SHUTDOWN REQUESTED <<<"
+                  Write-Host "Waiting 60 seconds grace period in case of mistake..."
+                  
+                  # مهلة 60 ثانية للتراجع
+                  Start-Sleep -Seconds 60
+                  
+                  # فحص مرة أخرى: هل ما زال الملف موجوداً؟
+                  if (Test-Path "C:\Users\Public\STOP_SIGNAL.txt") {
+                      Write-Host "Grace period over. Closing session now."
+                      break 
+                  } else {
+                      Write-Host "Shutdown was CANCELLED by user. Resuming session..."
+                  }
+              }
+
+              # طباعة الحالة كل دقيقة
+              Write-Host "Alive: $Remaining minutes remaining until Auto-Close."
+              Start-Sleep -Seconds 60
+          }
+          
+          Write-Host "Session Ended."
